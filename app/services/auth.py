@@ -10,7 +10,7 @@ from app.database import get_db
 from app.utils.timezone import now_gmt8
 
 # HTTP Bearer token
-security = HTTPBearer()
+security = HTTPBearer(auto_error=True)
 
 def verify_password(plain_password: str, stored_password: str) -> bool:
     return plain_password == stored_password

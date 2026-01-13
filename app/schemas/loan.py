@@ -20,7 +20,7 @@ class LoanResponse(BaseModel):
     fineAmount: float
     finePaid: bool
     notes: Optional[str] = None
-    copy: Optional[dict] = None
+    bookCopy: Optional[dict] = None  # Renamed from 'copy' to avoid shadowing BaseModel.copy()
     book: Optional[dict] = None
     
     class Config:

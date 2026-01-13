@@ -40,6 +40,6 @@ class Loan(Base):
             "fineAmount": float(self.fine_amount),
             "finePaid": self.fine_paid,
             "notes": self.notes,
-            "copy": self.copy.to_dict() if self.copy else None,
+            "bookCopy": self.copy.to_dict() if self.copy else None,  # Renamed from 'copy'
             "book": self.copy.book.to_dict() if self.copy and self.copy.book else None,
         }
