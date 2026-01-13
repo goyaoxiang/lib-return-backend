@@ -19,7 +19,12 @@ class User(Base):
     
     # Relationships
     loans = relationship("Loan", back_populates="user", cascade="all, delete-orphan")
-    return_transactions = relationship("ReturnTransaction", back_populates="user", cascade="all, delete-orphan")
+    return_transactions = relationship(
+        "ReturnTransaction", 
+        back_populates="user",
+        primaryjoin="User.user_id == ReturnTransaction.user_id",
+        cascade="all, delete-orphan"
+    )
     
     def to_dict(self):
         return {
