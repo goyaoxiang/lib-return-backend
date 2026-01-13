@@ -24,7 +24,7 @@ async def get_active_loans(
         Loan.status == 'active'
     ).order_by(Loan.due_date.asc()).all()
     
-    return [LoanResponse.from_orm(loan) for loan in loans]
+    return [LoanResponse.model_validate(loan) for loan in loans]
 
 @router.get("/history", response_model=List[LoanResponse])
 async def get_loan_history(
@@ -36,7 +36,7 @@ async def get_loan_history(
         Loan.user_id == current_user.user_id
     ).order_by(Loan.checkout_date.desc()).all()
     
-    return [LoanResponse.from_orm(loan) for loan in loans]
+    return [LoanResponse.model_validate(loan) for loan in loans]
 
 @router.get("/overdue", response_model=List[LoanResponse])
 async def get_overdue_loans(
@@ -58,7 +58,7 @@ async def get_overdue_loans(
     
     db.commit()
     
-    return [LoanResponse.from_orm(loan) for loan in loans]
+    return [LoanResponse.model_validate(loan) for loan in loans]
 
 @router.get("/{loan_id}", response_model=LoanResponse)
 async def get_loan(
@@ -78,7 +78,7 @@ async def get_loan(
             detail="Loan not found"
         )
     
-    return LoanResponse.from_orm(loan)
+    return LoanResponse.model_validate(loan)
 
 @router.post("/", response_model=LoanResponse, status_code=status.HTTP_201_CREATED)
 async def create_loan(
@@ -139,4 +139,4 @@ async def create_loan(
     db.commit()
     db.refresh(loan)
     
-    return LoanResponse.from_orm(loan)
+    return LoanResponse.model_validate(loan)

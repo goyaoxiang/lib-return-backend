@@ -126,7 +126,7 @@ async def scan_return_books(
     
     print(f"[RETURN] Return transaction {return_transaction.return_id} created - {len(request.epc_tags)} books, Total fines: ${total_fines}")
     
-    return ReturnTransactionResponse.from_orm(return_transaction)
+    return ReturnTransactionResponse.model_validate(return_transaction)
 
 @router.get("/{return_id}", response_model=ReturnTransactionResponse)
 async def get_return_transaction(
@@ -146,7 +146,7 @@ async def get_return_transaction(
             detail="Return transaction not found"
         )
     
-    return ReturnTransactionResponse.from_orm(return_transaction)
+    return ReturnTransactionResponse.model_validate(return_transaction)
 
 @router.get("/", response_model=List[ReturnTransactionResponse])
 async def get_user_returns(
@@ -163,7 +163,7 @@ async def get_user_returns(
         query = query.filter(ReturnTransaction.status == status_filter)
     
     returns = query.order_by(ReturnTransaction.return_date.desc()).all()
-    return [ReturnTransactionResponse.from_orm(r) for r in returns]
+    return [ReturnTransactionResponse.model_validate(r) for r in returns]
 
 @router.post("/{return_id}/process", response_model=ReturnTransactionResponse)
 async def process_return(
@@ -208,4 +208,4 @@ async def process_return(
     db.commit()
     db.refresh(return_transaction)
     
-    return ReturnTransactionResponse.from_orm(return_transaction)
+    return ReturnTransactionResponse.model_validate(return_transaction)

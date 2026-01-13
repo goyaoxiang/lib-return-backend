@@ -38,7 +38,7 @@ async def get_books(
         query = query.filter(Book.category == category)
     
     books = query.order_by(Book.title).all()
-    return [BookResponse.from_orm(book) for book in books]
+    return [BookResponse.model_validate(book) for book in books]
 
 @router.get("/books/{book_id}", response_model=BookResponse)
 async def get_book(book_id: int, db: Session = Depends(get_db)):
@@ -49,7 +49,7 @@ async def get_book(book_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book not found"
         )
-    return BookResponse.from_orm(book)
+    return BookResponse.model_validate(book)
 
 @router.get("/books/{book_id}/copies", response_model=List[BookCopyResponse])
 async def get_book_copies(book_id: int, db: Session = Depends(get_db)):
@@ -57,7 +57,7 @@ async def get_book_copies(book_id: int, db: Session = Depends(get_db)):
     copies = db.query(BookCopy).filter(
         BookCopy.book_id == book_id
     ).order_by(BookCopy.copy_number).all()
-    return [BookCopyResponse.from_orm(copy) for copy in copies]
+    return [BookCopyResponse.model_validate(copy) for copy in copies]
 
 # Book Copy endpoints
 @router.get("/copies/by-epc/{epc}", response_model=BookCopyResponse)
@@ -69,7 +69,7 @@ async def get_copy_by_epc(epc: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book copy not found"
         )
-    return BookCopyResponse.from_orm(copy)
+    return BookCopyResponse.model_validate(copy)
 
 # Return Box endpoints
 @router.get("/return-boxes", response_model=List[ReturnBoxResponse])
@@ -84,7 +84,7 @@ async def get_return_boxes(
         query = query.filter(ReturnBox.library_id == library_id)
     
     boxes = query.all()
-    return [ReturnBoxResponse.from_orm(box) for box in boxes]
+    return [ReturnBoxResponse.model_validate(box) for box in boxes]
 
 @router.get("/return-boxes/{return_box_id}", response_model=ReturnBoxResponse)
 async def get_return_box(return_box_id: int, db: Session = Depends(get_db)):
@@ -95,4 +95,4 @@ async def get_return_box(return_box_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Return box not found"
         )
-    return ReturnBoxResponse.from_orm(box)
+    return ReturnBoxResponse.model_validate(box)

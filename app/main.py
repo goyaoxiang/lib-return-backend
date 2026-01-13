@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.routes import auth, return as return_route, loan, book, mqtt
+from app.routes import auth, returns, loan, book, mqtt
 from app.services.mqtt_service import mqtt_service
 
 logging.basicConfig(
@@ -45,7 +45,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(return_route.router)
+app.include_router(returns.router)
 app.include_router(loan.router)
 app.include_router(book.router)
 app.include_router(mqtt.router)
