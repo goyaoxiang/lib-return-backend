@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routes import auth, returns, loan, book, mqtt
@@ -12,6 +13,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware to log incoming requests for debugging."""
+    async def dispatch(self, request: Request, call_next):
+        # Log request details for debugging auth issues
+        auth_header = request.headers.get("Authorization")
+        logger.info(f"{request.method} {request.url.path} - Auth header: {'Present' if auth_header else 'Missing'}")
+        if auth_header:
+            # Log first 20 chars of token for debugging (don't log full token for security)
+            logger.info(f"Token preview: {auth_header[:20]}...")
+        
+        response = await call_next(request)
+        return response
 
 Base.metadata.create_all(bind=engine)
 
@@ -35,12 +50,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add logging middleware first to see all requests
+app.add_middleware(LoggingMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization"],  # Explicitly allow Authorization header
 )
 
 # Include routers
