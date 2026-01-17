@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 3000
     
+    # HTTPS/SSL settings for uvicorn
+    ssl_enabled: bool = False  # Enable HTTPS/SSL
+    ssl_certfile: Optional[str] = None  # Path to SSL certificate file (e.g., /etc/letsencrypt/live/domain.com/fullchain.pem)
+    ssl_keyfile: Optional[str] = None  # Path to SSL private key file (e.g., /etc/letsencrypt/live/domain.com/privkey.pem)
+    
     # Database settings - confidential values from .env
     db_host: str = "localhost"
     db_port: int = 5432

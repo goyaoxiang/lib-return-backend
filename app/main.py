@@ -73,9 +73,35 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Configure SSL if enabled
+    ssl_kwargs = {}
+    if settings.ssl_enabled:
+        if not settings.ssl_certfile or not settings.ssl_keyfile:
+            logger.error("SSL enabled but ssl_certfile or ssl_keyfile not configured!")
+            raise ValueError("SSL enabled but certificate files not specified in .env")
+        
+        from pathlib import Path
+        cert_path = Path(settings.ssl_certfile)
+        key_path = Path(settings.ssl_keyfile)
+        
+        if not cert_path.exists():
+            logger.error(f"SSL certificate file not found: {cert_path}")
+            raise FileNotFoundError(f"SSL certificate file not found: {cert_path}")
+        if not key_path.exists():
+            logger.error(f"SSL key file not found: {key_path}")
+            raise FileNotFoundError(f"SSL key file not found: {key_path}")
+        
+        ssl_kwargs = {
+            "ssl_certfile": str(cert_path),
+            "ssl_keyfile": str(key_path),
+        }
+        logger.info(f"HTTPS enabled with certificate: {cert_path}")
+    
     uvicorn.run(
         "app.main:app",
         host=settings.host,
         port=settings.port,
-        reload=True
+        reload=True,
+        **ssl_kwargs
     )
