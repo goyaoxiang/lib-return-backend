@@ -32,11 +32,11 @@ INSERT INTO book_copy (book_id, copy_number, book_epc, status, condition, librar
 (5, 1, 'E280691500004022A7D4C007', 'available', 'good', 1)
 ON CONFLICT (book_epc) DO NOTHING;
 
--- Insert test users (password: "password123" - hash in real implementation)
+-- Insert test users (password: "password123" - plain text)
 INSERT INTO "user" (user_fname, user_lname, user_email, user_password_hash, phone_number, user_role) VALUES
-('John', 'Doe', 'john.doe@university.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7890', 'student'),
-('Jane', 'Smith', 'jane.smith@university.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7891', 'student'),
-('Admin', 'Librarian', 'admin@library.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7892', 'librarian')
+('John', 'Doe', 'john.doe@university.edu', 'password123', '123-456-7890', 'student'),
+('Jane', 'Smith', 'jane.smith@university.edu', 'password123', '123-456-7891', 'student'),
+('Admin', 'Librarian', 'admin@library.edu', 'password123', '123-456-7892', 'librarian')
 ON CONFLICT (user_email) DO NOTHING;
 
 -- Insert sample active loans

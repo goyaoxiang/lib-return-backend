@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import logging
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -13,24 +13,15 @@ from app.utils.timezone import now_gmt8
 # HTTP Bearer token - auto_error=False so we can handle errors ourselves
 security = HTTPBearer(auto_error=False)
 
-# Password hashing context - using bcrypt with automatic salt generation
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
-    try:
-        return pwd_context.verify(plain_password, hashed_password)
-    except Exception as e:
-        # Log error for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Password verification error: {e}. Hash format may be invalid.")
-        # If hash is not a valid bcrypt hash, return False
-        return False
+def verify_password(plain_password: str, stored_password: str) -> bool:
+    """Verify a plain password against stored password (plain text comparison)."""
+    return plain_password == stored_password
 
 def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    """Return password as-is (no hashing)."""
+    return password
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create a JWT access token."""
