@@ -11,6 +11,7 @@ ENV/
 
 # Environment variables
 .env
+*certs*
 
 # IDE
 .vscode/

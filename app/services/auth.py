@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -12,11 +13,16 @@ from app.utils.timezone import now_gmt8
 # HTTP Bearer token - auto_error=False so we can handle errors ourselves
 security = HTTPBearer(auto_error=False)
 
-def verify_password(plain_password: str, stored_password: str) -> bool:
-    return plain_password == stored_password
+# Password hashing context - using bcrypt with automatic salt generation
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a hashed password."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    return password
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create a JWT access token."""

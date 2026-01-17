@@ -1,6 +1,8 @@
 import json
 import logging
 import threading
+import ssl
+from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 import paho.mqtt.client as mqtt
@@ -205,8 +207,65 @@ class MQTTService:
         except Exception as e:
             logger.error(f"Error processing inventory update: {e}", exc_info=True)
     
+    def _setup_tls(self):
+        """Configure TLS/SSL for MQTT client."""
+        if not settings.mqtt_use_tls:
+            return
+        
+        try:
+            # Create SSL context
+            context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            
+            # Load CA certificate if provided
+            if settings.mqtt_ca_cert:
+                ca_cert_path = Path(settings.mqtt_ca_cert)
+                if not ca_cert_path.exists():
+                    logger.error(f"CA certificate file not found: {ca_cert_path}")
+                    raise FileNotFoundError(f"CA certificate file not found: {ca_cert_path}")
+                context.load_verify_locations(cafile=str(ca_cert_path))
+                logger.info(f"Loaded CA certificate from {ca_cert_path}")
+            else:
+                # Use system default CA certificates
+                context.load_default_certs()
+                logger.info("Using system default CA certificates")
+            
+            # Load client certificate and key if provided (mutual TLS)
+            if settings.mqtt_client_cert and settings.mqtt_client_key:
+                client_cert_path = Path(settings.mqtt_client_cert)
+                client_key_path = Path(settings.mqtt_client_key)
+                
+                if not client_cert_path.exists():
+                    logger.error(f"Client certificate file not found: {client_cert_path}")
+                    raise FileNotFoundError(f"Client certificate file not found: {client_cert_path}")
+                if not client_key_path.exists():
+                    logger.error(f"Client key file not found: {client_key_path}")
+                    raise FileNotFoundError(f"Client key file not found: {client_key_path}")
+                
+                context.load_cert_chain(
+                    certfile=str(client_cert_path),
+                    keyfile=str(client_key_path)
+                )
+                logger.info(f"Loaded client certificate from {client_cert_path} and key from {client_key_path}")
+            
+            # Configure TLS settings
+            if settings.mqtt_tls_insecure:
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                logger.warning("TLS insecure mode enabled - certificate verification disabled (not recommended for production)")
+            else:
+                context.check_hostname = True
+                context.verify_mode = ssl.CERT_REQUIRED
+            
+            # Apply TLS context to MQTT client
+            self.client.tls_set_context(context)
+            logger.info("TLS/SSL configured for MQTT connection")
+            
+        except Exception as e:
+            logger.error(f"Error setting up TLS for MQTT: {e}", exc_info=True)
+            raise
+    
     def connect(self):
-        """Connect to MQTT broker."""
+        """Connect to MQTT broker with optional TLS/SSL support."""
         try:
             with self._lock:
                 if self.client and self.is_connected:
@@ -222,12 +281,20 @@ class MQTTService:
                 self.client.on_disconnect = self.on_disconnect
                 self.client.on_message = self.on_message
                 
+                # Configure TLS/SSL if enabled
+                if settings.mqtt_use_tls:
+                    self._setup_tls()
+                    # Use secure port (8883) if default port is still 1883
+                    if settings.mqtt_port == 1883:
+                        logger.warning("TLS enabled but port is 1883. Consider using port 8883 for MQTT over TLS.")
+                
                 # Set username and password if provided
                 if settings.mqtt_username and settings.mqtt_password:
                     self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
                 
                 # Connect to broker (non-blocking, will connect in background)
-                logger.info(f"Connecting to MQTT broker at {settings.mqtt_broker}:{settings.mqtt_port}")
+                protocol = "TLS" if settings.mqtt_use_tls else "TCP"
+                logger.info(f"Connecting to MQTT broker at {settings.mqtt_broker}:{settings.mqtt_port} over {protocol}")
                 try:
                     self.client.connect(settings.mqtt_broker, settings.mqtt_port, keepalive=60)
                     # Start network loop in a separate thread (will attempt reconnection automatically)

@@ -13,24 +13,9 @@ from app.schemas.return_transaction import (
     ReturnTransactionResponse,
     ReturnProcessRequest
 )
-from app.config import settings
 from app.utils.timezone import now_gmt8
 
 router = APIRouter(prefix="/api/library/return", tags=["Library Returns"])
-
-def calculate_fine(due_date, return_date, daily_rate=0.50, max_fine=10.00):
-    """Calculate fine for overdue book."""
-    if not return_date or return_date <= due_date:
-        return 0.00
-    
-    days_overdue = (return_date - due_date).days
-    fine = days_overdue * daily_rate
-    
-    # Cap maximum fine
-    if fine > max_fine:
-        fine = max_fine
-    
-    return fine
 
 @router.post("/scan", response_model=ReturnTransactionResponse, status_code=status.HTTP_201_CREATED)
 async def scan_return_books(
@@ -70,7 +55,6 @@ async def scan_return_books(
     db.refresh(return_transaction)
     
     # Process each EPC tag
-    total_fines = 0.00
     return_date = now_gmt8()
     
     for epc_tag in request.epc_tags:
@@ -88,20 +72,11 @@ async def scan_return_books(
             Loan.status == 'active'
         ).first()
         
-        # Calculate fine if loan exists and is overdue
-        fine_amount = 0.00
+        # Update loan status if loan exists
         if loan:
-            fine_amount = calculate_fine(
-                loan.due_date,
-                return_date,
-                settings.daily_fine_rate,
-                settings.max_fine_amount
-            )
-            
-            # Update loan status
             loan.return_date = return_date
             loan.status = 'returned'
-            loan.fine_amount = fine_amount
+            loan.fine_amount = 0.00  # No fine calculation
             db.commit()
         
         # Create return item
@@ -110,21 +85,19 @@ async def scan_return_books(
             copy_id=book_copy.copy_id,
             loan_id=loan.loan_id if loan else None,
             condition_on_return='good',  # Default, can be updated during processing
-            fine_amount=fine_amount
+            fine_amount=0.00  # No fine calculation
         )
         db.add(return_item)
         
         # Update book copy status
         book_copy.status = 'returned'
-        
-        total_fines += fine_amount
     
-    # Update return transaction total fines
-    return_transaction.total_fines = total_fines
+    # Update return transaction (fines remain 0.00)
+    return_transaction.total_fines = 0.00
     db.commit()
     db.refresh(return_transaction)
     
-    print(f"[RETURN] Return transaction {return_transaction.return_id} created - {len(request.epc_tags)} books, Total fines: ${total_fines}")
+    print(f"[RETURN] Return transaction {return_transaction.return_id} created - {len(request.epc_tags)} books")
     
     return ReturnTransactionResponse.model_validate(return_transaction)
 

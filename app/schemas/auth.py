@@ -5,7 +5,7 @@ class UserCreate(BaseModel):
     user_fname: str = Field(..., min_length=1, max_length=100)
     user_lname: str = Field(..., min_length=1, max_length=100)
     user_email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str
     phone_number: Optional[str] = Field(None, max_length=20)
     user_role: Optional[str] = Field("student", pattern="^(student|librarian|admin)$")
 

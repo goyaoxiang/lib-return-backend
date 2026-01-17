@@ -8,7 +8,6 @@ from app.models.book import BookCopy
 from app.models.loan import Loan
 from app.services.auth import get_current_user
 from app.schemas.loan import LoanResponse, LoanCreate, LoanUpdate
-from app.config import settings
 from app.utils.timezone import now_gmt8
 
 router = APIRouter(prefix="/api/library/loans", tags=["Library Loans"])

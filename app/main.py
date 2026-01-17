@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import engine, Base
@@ -20,10 +20,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Log request details for debugging auth issues
         auth_header = request.headers.get("Authorization")
-        logger.info(f"{request.method} {request.url.path} - Auth header: {'Present' if auth_header else 'Missing'}")
+        client_ip = request.client.host if request.client else "unknown"
+        logger.info(f"{request.method} {request.url.path} - IP: {client_ip} - Auth: {'Present' if auth_header else 'Missing'}")
         if auth_header:
             # Log first 20 chars of token for debugging (don't log full token for security)
-            logger.info(f"Token preview: {auth_header[:20]}...")
+            logger.debug(f"Token preview: {auth_header[:20]}...")
         
         response = await call_next(request)
         return response
@@ -48,18 +49,12 @@ app = FastAPI(
     description="Backend API for Smart Library Book Return System",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# Add logging middleware first to see all requests
+# Logging middleware (last, to log everything)
 app.add_middleware(LoggingMiddleware)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*", "Authorization"],  # Explicitly allow Authorization header
-)
 
 # Include routers
 app.include_router(auth.router)
