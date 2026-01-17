@@ -3,7 +3,7 @@ import logging
 import threading
 import ssl
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import paho.mqtt.client as mqtt
 from sqlalchemy.orm import Session
@@ -26,6 +26,8 @@ class MQTTService:
         self._lock = threading.Lock()
         self._last_unlock_times: Dict[int, datetime] = {}
         self._unlock_cooldown_seconds = 5
+        # Session state for return boxes: {return_box_id: {'epc_tags': [...], 'status': 'scanning'|'finalized'|'completed', 'timestamp': datetime}}
+        self._return_sessions: Dict[int, Dict] = {}
     
     def on_connect(self, client, userdata, flags, rc):
         """Callback when MQTT client connects to broker."""
@@ -33,8 +35,8 @@ class MQTTService:
             self.is_connected = True
             logger.info(f"MQTT client connected to {settings.mqtt_broker}:{settings.mqtt_port}")
             client.subscribe("+/Return", qos=1)  # Subscribe to ReturnBox01/Return, etc.
-            client.subscribe("+/Inventory", qos=1)  # Subscribe to ReturnBox01/Inventory, etc.
-            logger.info("Subscribed to +/Return and +/Inventory topics")
+            client.subscribe("+/Command", qos=1)  # Subscribe to ReturnBox01/Command to receive CONFIRM RETURN
+            logger.info("Subscribed to +/Return and +/Command topics")
         else:
             logger.error(f"MQTT connection failed with code {rc}")
             self.is_connected = False
@@ -57,8 +59,8 @@ class MQTTService:
             
             if topic.startswith("ReturnBox") and topic.endswith("/Return"):
                 self._handle_return_update(topic, payload)
-            elif topic.startswith("ReturnBox") and topic.endswith("/Inventory"):
-                self._handle_inventory_update(topic, payload)
+            elif topic.startswith("ReturnBox") and topic.endswith("/Command"):
+                self._handle_command_message(topic, payload)
         except Exception as e:
             logger.error(f"Error processing MQTT message: {e}", exc_info=True)
     
@@ -98,7 +100,9 @@ class MQTTService:
             logger.error(f"Error sending unlock command: {e}", exc_info=True)
     
     def _handle_return_update(self, topic: str, payload: str):
-        """Handle return update from ESP32 with EPC tags (books being returned)."""
+        """Handle return update from ESP32 with EPC tags (books being returned).
+        Stores EPCs in session state for mobile app polling. If status is 'finalized',
+        automatically updates database."""
         try:
             # Extract return box ID from topic (e.g., "ReturnBox01/Return" -> 1)
             topic_clean = topic.replace("/Return", "").replace("ReturnBox", "")
@@ -119,41 +123,130 @@ class MQTTService:
                 logger.warning(f"Unexpected return payload format: {payload}")
                 return
             
-            if not epc_tags:
-                logger.info(f"Empty return update received from return box {return_box_id}")
-                return
-            
-            logger.info(f"Processing return update from return box {return_box_id}: {len(epc_tags)} EPC tags")
-            
-            db = SessionLocal()
-            try:
-                # Find book copies by EPC tags
-                book_copies = db.query(BookCopy).filter(
-                    BookCopy.book_epc.in_(epc_tags)
-                ).all()
+            with self._lock:
+                # Get or create session for this return box
+                if return_box_id not in self._return_sessions:
+                    self._return_sessions[return_box_id] = {
+                        'epc_tags': [],
+                        'status': 'scanning',
+                        'timestamp': now_gmt8()
+                    }
                 
-                if not book_copies:
-                    logger.warning(f"No book copies found for EPC tags from return box {return_box_id}")
-                    return
+                session = self._return_sessions[return_box_id]
                 
-                # Verify return box exists
-                return_box = db.query(ReturnBox).filter(ReturnBox.return_box_id == return_box_id).first()
-                if not return_box:
-                    logger.warning(f"Return box {return_box_id} not found in database")
-                    return
-                
-                # Note: The actual return transaction creation should be handled by the API endpoint
-                # This MQTT handler just logs the detection
-                # The Flutter app should call the /api/library/return/scan endpoint with these EPC tags
-                logger.info(f"Return box {return_box_id} detected {len(book_copies)} books: {[bc.book_epc for bc in book_copies]}")
-                
-            finally:
-                db.close()
+                # Check if this is a finalized list (door closed) - if status is already finalized, update database
+                if session['status'] == 'finalized':
+                    # This is the final EPC list after door closed - update database
+                    logger.info(f"Finalized EPC list received from return box {return_box_id}: {len(epc_tags)} tags")
+                    self._process_finalized_return(return_box_id, epc_tags)
+                    session['status'] = 'completed'
+                    session['epc_tags'] = epc_tags
+                    session['timestamp'] = now_gmt8()
+                elif session['status'] == 'completed':
+                    # Already completed, just update the EPC list for display
+                    session['epc_tags'] = epc_tags
+                    session['timestamp'] = now_gmt8()
+                else:
+                    # This is a real-time update while door is open - store for polling
+                    session['epc_tags'] = epc_tags
+                    session['timestamp'] = now_gmt8()
+                    logger.info(f"Return update from return box {return_box_id}: {len(epc_tags)} EPC tags (status: {session['status']})")
                 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in return update: {e}")
         except Exception as e:
             logger.error(f"Error handling return update: {e}", exc_info=True)
+    
+    def _handle_command_message(self, topic: str, payload: str):
+        """Handle command messages from ESP32 (e.g., CONFIRM RETURN)."""
+        try:
+            # Extract return box ID from topic (e.g., "ReturnBox01/Command" -> 1)
+            topic_clean = topic.replace("/Command", "").replace("ReturnBox", "")
+            try:
+                return_box_id = int(topic_clean)
+            except ValueError:
+                logger.warning(f"Could not extract return_box_id from topic: {topic}")
+                return
+            
+            if payload == "CONFIRM RETURN":
+                logger.info(f"CONFIRM RETURN received from return box {return_box_id}")
+                with self._lock:
+                    if return_box_id in self._return_sessions:
+                        session = self._return_sessions[return_box_id]
+                        # Mark session as finalized - next RETURN message will trigger database update
+                        session['status'] = 'finalized'
+                        logger.info(f"Return box {return_box_id} session marked as finalized")
+                        # If we already have EPC tags, process them now (in case final RETURN message already arrived)
+                        if session['epc_tags'] and session['status'] != 'completed':
+                            logger.info(f"Processing finalized return with existing EPC tags: {len(session['epc_tags'])} tags")
+                            epc_tags = list(session['epc_tags'])  # Copy the list
+                            # Process in a separate thread to avoid deadlock
+                            import threading
+                            threading.Thread(
+                                target=self._process_finalized_return,
+                                args=(return_box_id, epc_tags),
+                                daemon=True
+                            ).start()
+                    else:
+                        # Create session if it doesn't exist (shouldn't happen, but handle gracefully)
+                        logger.warning(f"CONFIRM RETURN received but no active session for return box {return_box_id}")
+                        self._return_sessions[return_box_id] = {
+                            'epc_tags': [],
+                            'status': 'finalized',
+                            'timestamp': now_gmt8()
+                        }
+        except Exception as e:
+            logger.error(f"Error handling command message: {e}", exc_info=True)
+    
+    def _process_finalized_return(self, return_box_id: int, epc_tags: List[str]):
+        """Process finalized return and update database automatically."""
+        if not epc_tags:
+            logger.info(f"No EPC tags in finalized return from return box {return_box_id}")
+            return
+        
+        db = SessionLocal()
+        try:
+            # Find book copies by EPC tags
+            book_copies = db.query(BookCopy).filter(
+                BookCopy.book_epc.in_(epc_tags)
+            ).all()
+            
+            if not book_copies:
+                logger.warning(f"No book copies found for finalized EPC tags from return box {return_box_id}")
+                return
+            
+            # Verify return box exists
+            return_box = db.query(ReturnBox).filter(ReturnBox.return_box_id == return_box_id).first()
+            if not return_box:
+                logger.warning(f"Return box {return_box_id} not found in database")
+                return
+            
+            logger.info(f"Processing finalized return for return box {return_box_id}: {len(book_copies)} books")
+            
+            # Update book copy status to 'returned'
+            for book_copy in book_copies:
+                book_copy.status = 'returned'
+            
+            # Update any active loans for these copies
+            return_date = now_gmt8()
+            for book_copy in book_copies:
+                loan = db.query(Loan).filter(
+                    Loan.copy_id == book_copy.copy_id,
+                    Loan.status == 'active'
+                ).first()
+                if loan:
+                    loan.return_date = return_date
+                    loan.status = 'returned'
+                    loan.fine_amount = 0.00
+            
+            db.commit()
+            logger.info(f"Database updated for finalized return from return box {return_box_id}")
+            
+        except Exception as e:
+            logger.error(f"Error processing finalized return: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
     
     def _handle_inventory_update(self, topic: str, payload: str):
         """Handle inventory update from ESP32. Called when door closes.
@@ -325,6 +418,61 @@ class MQTTService:
     def is_running(self) -> bool:
         """Check if MQTT service is running and connected."""
         return self.is_connected and self.client is not None
+    
+    def get_return_status(self, return_box_id: int) -> Optional[Dict]:
+        """Get current return status for a return box (for HTTP polling).
+        Returns: {
+            'epc_tags': [...],
+            'status': 'scanning'|'finalized'|'completed',
+            'timestamp': datetime,
+            'books': [...]  # Book information if available
+        }"""
+        with self._lock:
+            if return_box_id not in self._return_sessions:
+                return None
+            
+            session = self._return_sessions[return_box_id].copy()
+            
+            # Retrieve book information for EPC tags
+            if session['epc_tags']:
+                db = SessionLocal()
+                try:
+                    book_copies = db.query(BookCopy).filter(
+                        BookCopy.book_epc.in_(session['epc_tags'])
+                    ).all()
+                    
+                    # Get book information
+                    books_info = []
+                    for copy in book_copies:
+                        book_info = {
+                            'epc': copy.book_epc,
+                            'copy_id': copy.copy_id,
+                            'book_id': copy.book_id,
+                            'status': copy.status
+                        }
+                        if copy.book:
+                            book_info['title'] = copy.book.title
+                            book_info['author'] = copy.book.author
+                            book_info['isbn'] = copy.book.isbn
+                        books_info.append(book_info)
+                    
+                    session['books'] = books_info
+                except Exception as e:
+                    logger.error(f"Error retrieving book information: {e}")
+                    session['books'] = []
+                finally:
+                    db.close()
+            else:
+                session['books'] = []
+            
+            return session
+    
+    def clear_return_session(self, return_box_id: int):
+        """Clear return session for a return box (call after return is completed)."""
+        with self._lock:
+            if return_box_id in self._return_sessions:
+                del self._return_sessions[return_box_id]
+                logger.info(f"Cleared return session for return box {return_box_id}")
 
 
 mqtt_service = MQTTService()

@@ -8,6 +8,7 @@ from app.models.book import BookCopy, ReturnBox
 from app.models.loan import Loan
 from app.models.return_transaction import ReturnTransaction, ReturnItem
 from app.services.auth import get_current_user
+from app.services.mqtt_service import mqtt_service
 from app.schemas.return_transaction import (
     ReturnScanRequest,
     ReturnTransactionResponse,
@@ -137,6 +138,38 @@ async def get_user_returns(
     
     returns = query.order_by(ReturnTransaction.return_date.desc()).all()
     return [ReturnTransactionResponse.model_validate(r) for r in returns]
+
+@router.get("/status/{return_box_id}")
+async def get_return_status(
+    return_box_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """Get current return status for a return box (for HTTP polling).
+    Returns EPC tags and book information in real-time."""
+    if not mqtt_service.is_running():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MQTT service is not connected"
+        )
+    
+    status_data = mqtt_service.get_return_status(return_box_id)
+    
+    if status_data is None:
+        # No active return session
+        return {
+            "return_box_id": return_box_id,
+            "status": "idle",
+            "epc_tags": [],
+            "books": []
+        }
+    
+    return {
+        "return_box_id": return_box_id,
+        "status": status_data['status'],
+        "epc_tags": status_data['epc_tags'],
+        "books": status_data.get('books', []),
+        "timestamp": status_data['timestamp'].isoformat() if 'timestamp' in status_data else None
+    }
 
 @router.post("/{return_id}/process", response_model=ReturnTransactionResponse)
 async def process_return(
