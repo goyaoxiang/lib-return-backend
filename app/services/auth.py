@@ -18,7 +18,15 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        # Log error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Password verification error: {e}. Hash format may be invalid.")
+        # If hash is not a valid bcrypt hash, return False
+        return False
 
 def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt."""

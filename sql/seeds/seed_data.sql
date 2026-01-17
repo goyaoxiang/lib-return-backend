@@ -34,9 +34,9 @@ ON CONFLICT (book_epc) DO NOTHING;
 
 -- Insert test users (password: "password123" - hash in real implementation)
 INSERT INTO "user" (user_fname, user_lname, user_email, user_password_hash, phone_number, user_role) VALUES
-('John', 'Doe', 'john.doe@university.edu', 'password123', '123-456-7890', 'student'),
-('Jane', 'Smith', 'jane.smith@university.edu', 'password123', '123-456-7891', 'student'),
-('Admin', 'Librarian', 'admin@library.edu', 'password123', '123-456-7892', 'librarian')
+('John', 'Doe', 'john.doe@university.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7890', 'student'),
+('Jane', 'Smith', 'jane.smith@university.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7891', 'student'),
+('Admin', 'Librarian', 'admin@library.edu', '$2b$12$al0r6JhZiFzjz4D9qv1j8uxJ3QxhhdcWRjgm.3SkbuaabfdoAqvEG', '123-456-7892', 'librarian')
 ON CONFLICT (user_email) DO NOTHING;
 
 -- Insert sample active loans
