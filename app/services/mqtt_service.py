@@ -344,7 +344,6 @@ class MQTTService:
             if settings.mqtt_tls_insecure:
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
-                logger.warning("TLS insecure mode enabled - certificate verification disabled (not recommended for production)")
             else:
                 context.check_hostname = True
                 context.verify_mode = ssl.CERT_REQUIRED
