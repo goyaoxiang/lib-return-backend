@@ -8,26 +8,18 @@ services:
       POSTGRES_DB: library_return
       TZ: Asia/Kuala_Lumpur
     ports:
-      - "127.0.0.1:5432:5432"  # Only accessible from localhost for security
+      - "127.0.0.1:5432:5432"
     volumes:
       - lib_postgres_data:/var/lib/postgresql/data
       - ../sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ../sql/seeds/seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql
-      # Mount SSL certificates (uncomment to enable SSL)
-      # After generating certificates with postgres-ssl-setup.sh, uncomment these:
       - ./postgres-ssl-certs/server-cert.pem:/var/lib/postgresql/server.crt:ro
       - ./postgres-ssl-certs/server-key.pem:/var/lib/postgresql/server.key:ro
       - ./postgres-ssl-certs/ca-cert.pem:/var/lib/postgresql/ca.crt:ro
-    # Uncomment the command section below to enable SSL (requires certificates to be mounted above)
     command: >
-      postgres
-      -c ssl=on
-      -c ssl_cert_file=/var/lib/postgresql/server.crt
-      -c ssl_key_file=/var/lib/postgresql/server.key
-      -c ssl_ca_file=/var/lib/postgresql/ca.crt
-      -c ssl_prefer_server_ciphers=on
+      postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key -c ssl_ca_file=/var/lib/postgresql/ca.crt -c ssl_prefer_server_ciphers=on
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
